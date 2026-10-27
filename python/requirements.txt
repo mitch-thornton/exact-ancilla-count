@@ -1,0 +1,3 @@
+# Standard library only for the front end itself.
+# matplotlib is needed only to regenerate figures.
+matplotlib>=3.5

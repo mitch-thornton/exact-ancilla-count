@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+c/*.o
+c/vsim
+c/vsim_quad
+c/vsim_cubic
+c/vsim_brank
+c/vsim_block
+results/
+.DS_Store

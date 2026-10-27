@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<!--
+  file:        scripts/ancilla.html
+  project:     exact-ancilla-count (spectral computation of the line requirement for reversible embedding)
+  brief:       Browser page for the local line-requirement tool
+  purpose:     Presentation only; ancilla_server_v8.py does the computation and returns g, L, a, class and audit
+  inputs:      a netlist chosen in the page
+  outputs:     rendered report
+  invocation:  served by python3 scripts/ancilla_server_v8.py at http://localhost:8767
+  created:     bundle ancilla_spectral_bundle_v1, 2026-07-26
+  modified:    bundle ancilla_spectral_bundle_v13, 2026-10-27
+  history:     v1 2026-07-26; v8 2026-10-08 relabeled garbage g, lines L, ancilla a;
+               v11 2026-10-26 license line simplified to plain MIT, no code change;
+               v13 2026-10-27 project line of the header reworded, no code change
+  author:      Mitchell A. Thornton <mitch@smu.edu>, ORCID 0000-0003-3559-9511
+  SPDX-License-Identifier: MIT
+  (c) 2026 Mitchell A. Thornton
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ancilla requirement — spectral front end</title>
+<style>
+  :root { --ink:#1a1a2e; --acc:#0f4c81; --warm:#b45309; --ok:#1a7f37;
+          --bad:#b42318; --line:#e3e6ea; --muted:#6b7280; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
+         margin:0; color:var(--ink); background:#f6f7f9; }
+  header { background:var(--acc); color:#fff; padding:14px 24px; }
+  header h1 { margin:0; font-size:19px; font-weight:600; }
+  header p { margin:3px 0 0; font-size:12px; opacity:.85; }
+  main { max-width:960px; margin:18px auto; padding:0 16px 40px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:8px;
+          padding:16px 18px; margin-bottom:16px; }
+  .card h2 { margin:0 0 10px; font-size:14px; text-transform:uppercase;
+             letter-spacing:.05em; color:var(--muted); font-weight:600; }
+  .row { display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+  label { font-size:13px; font-weight:600; }
+  select, button, input { font-size:14px; padding:6px 10px; border-radius:6px;
+                          border:1px solid #c8cdd4; background:#fff; color:var(--ink); }
+  button.go { background:var(--acc); color:#fff; border:none; padding:8px 22px;
+              cursor:pointer; font-weight:600; }
+  button.go:disabled { opacity:.45; cursor:default; }
+  #drop { border:2px dashed #b9c0c9; border-radius:8px; padding:26px;
+          text-align:center; color:#666; cursor:pointer; font-size:13px; }
+  #drop.hot { border-color:var(--acc); color:var(--acc); background:#eef4fa; }
+  table.stats { border-collapse:collapse; width:100%; font-size:13px; }
+  table.stats td, table.stats th { border-bottom:1px solid #eee; padding:6px 8px;
+                                   text-align:left; }
+  table.stats th { font-size:11px; text-transform:uppercase; color:var(--muted);
+                   letter-spacing:.04em; }
+  table.stats td:first-child { font-weight:600; width:38%; }
+  .mono { font-family:ui-monospace, Menlo, Consolas, monospace; }
+  .big { font-size:26px; font-weight:700; color:var(--acc); }
+  .pill { display:inline-block; padding:2px 9px; border-radius:11px; font-size:11px;
+          font-weight:700; letter-spacing:.03em; }
+  .pill.exact { background:#e7f6ec; color:var(--ok); }
+  .pill.interval { background:#fdf3e7; color:var(--warm); }
+  .pill.audit { background:#eef4fa; color:var(--acc); }
+  .err { color:var(--bad); white-space:pre-wrap; font-family:ui-monospace,monospace;
+         font-size:12px; }
+  .note { font-size:12px; color:var(--muted); line-height:1.5; }
+  .spin { display:none; margin-left:12px; font-size:13px; color:var(--acc); }
+  .spin.on { display:inline; }
+  pre.src { max-height:220px; overflow:auto; background:#0f172a; color:#d7e2f0;
+            padding:11px; border-radius:6px; font-size:12px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:720px){ .grid2 { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Line requirement, spectral front end</h1>
+  <p>How many garbage outputs, circuit lines and constant inputs will a reversible embedding of this function need?
+     Computed from the Walsh spectrum, not from the truth table.</p>
+</header>
+
+<main>
+  <div class="card">
+    <h2>1. Choose a circuit</h2>
+    <div class="row" style="margin-bottom:12px">
+      <label for="sample">Bundled sample</label>
+      <select id="sample"></select>
+      <button class="go" id="run">Analyze</button>
+      <span class="spin" id="spin">working...</span>
+    </div>
+    <div id="drop">or drop a netlist here (<span class="mono">.v .isc .pla .aig</span>)</div>
+    <p class="note" style="margin-bottom:0">
+      The analysis classifies each support-disjoint component by randomized
+      difference tests and routes it to the matching closed form. Where a class
+      is established you get the exact garbage requirement g, the line count L = m + g and the ancilla count a = L - n. Where none is, you
+      get bounds that always hold, and the tool says so rather than guessing.
+      Most real circuits are high degree and land in the second case. The
+      independence estimate is reported for information and is <b>not</b> a
+      bound: on a one-hot decoder it excludes the true value.
+    </p>
+  </div>
+
+  <div id="out" style="display:none">
+    <div class="card">
+      <h2>2. Result</h2>
+      <div class="row" style="align-items:flex-end; gap:26px">
+        <div>
+          <div class="note">garbage outputs g</div>
+          <div class="big mono" id="vmain">-</div>
+        </div>
+        <div>
+          <div class="note">lines L = m + g (ancilla a = L - n)</div>
+          <div class="big mono" id="lines">-</div>
+        </div>
+        <div><span class="pill" id="kind">-</span></div>
+      </div>
+      <table class="stats" style="margin-top:14px">
+        <tbody id="summary"></tbody>
+      </table>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>3. Components</h2>
+        <table class="stats"><thead><tr>
+          <th>component</th><th>class</th><th>v</th><th>audit</th>
+        </tr></thead><tbody id="comps"></tbody></table>
+        <p class="note" id="auditnote" style="margin-bottom:0"></p>
+      </div>
+      <div class="card">
+        <h2>4. Spectral detail</h2>
+        <table class="stats"><tbody id="detail"></tbody></table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>5. Source</h2>
+      <pre class="src mono" id="src"></pre>
+    </div>
+  </div>
+
+  <div class="card" id="errcard" style="display:none">
+    <h2>Error</h2><div class="err" id="err"></div>
+  </div>
+
+  <p class="note">
+    Runtimes shown are Python reference-implementation times and are not
+    performance results; the C front end in <span class="mono">csrc/</span> is
+    the performance path. See <span class="mono">SYNC.md</span>.
+  </p>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+let pending = null;
+
+function setSpin(on){ $("#spin").classList.toggle("on", on); $("#run").disabled = on; }
+function showErr(m){ $("#errcard").style.display="block"; $("#err").textContent=m;
+                     $("#out").style.display="none"; }
+function clearErr(){ $("#errcard").style.display="none"; }
+
+fetch("/samples").then(r=>r.json()).then(js=>{
+  const sel = $("#sample");
+  js.samples.forEach(s=>{ const o=document.createElement("option");
+    o.value=s; o.textContent=s; sel.appendChild(o); });
+}).catch(e=>showErr("Cannot reach the analysis server.\n\n" +
+  "Start it with:\n    python3 ancilla_server_v1.py\n\n" +
+  "then open http://localhost:8767 . Opening this file directly with file:// " +
+  "will not work; the page needs the server to do the computation.\n\n" + e));
+
+$("#run").addEventListener("click", ()=>{
+  clearErr(); setSpin(true);
+  const body = pending
+    ? {filename: pending.name, content: pending.text}
+    : {sample: $("#sample").value};
+  fetch("/analyze", {method:"POST", headers:{"Content-Type":"application/json"},
+                     body: JSON.stringify(body)})
+    .then(r=>r.json())
+    .then(js=>{ setSpin(false); js.error ? showErr(js.error) : render(js); })
+    .catch(e=>{ setSpin(false); showErr(String(e)); });
+});
+
+const drop = $("#drop");
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev, e=>{
+  e.preventDefault(); drop.classList.add("hot"); }));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev, e=>{
+  e.preventDefault(); drop.classList.remove("hot"); }));
+drop.addEventListener("drop", e=>{
+  const f = e.dataTransfer.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { pending = {name:f.name, text:rd.result};
+                      drop.textContent = "loaded: " + f.name + " (click Analyze)"; };
+  rd.readAsText(f);
+});
+
+function row(k,v){ return `<tr><td>${k}</td><td class="mono">${v}</td></tr>`; }
+
+function render(js){
+  $("#out").style.display="block";
+  const exact = js.v_exact !== null && js.v_exact !== undefined;
+  $("#vmain").textContent = exact ? js.v_exact
+      : `${js.sound_lower}..${js.sound_upper}`;
+  $("#lines").textContent = exact ? ((js.m + js.v_exact) + "  (a = " + (js.m + js.v_exact - js.n) + ")")
+      : `${js.m + js.sound_lower}..${js.m + js.sound_upper}`;
+  const kind = $("#kind");
+  kind.textContent = exact ? "EXACT" : "SOUND BOUNDS ONLY";
+  kind.className = "pill " + (exact ? "exact" : "interval");
+
+  $("#summary").innerHTML =
+      row("circuit", js.name) + row("inputs n", js.n) + row("outputs m", js.m) +
+      row("gates", js.gates) + row("components", js.components.length) +
+      row("classes found", js.classes) +
+      row("analysis time", js.seconds + " s (Python reference)");
+
+  $("#comps").innerHTML = js.components.map((c,i)=>{
+    const a = c.audit === null || c.audit === undefined ? "&mdash;"
+            : (c.audit ? '<span class="pill audit">OK</span>' : "MISMATCH");
+    const v = (c.v === null || c.v === undefined) ? "&mdash;" : c.v;
+    return `<tr><td>#${i} (${c.n} in, ${c.m} out)</td><td>${c.cls}</td>` +
+           `<td class="mono">${v}</td><td>${a}</td></tr>`;
+  }).join("");
+  const audited = js.components.filter(c=>c.audit!==null&&c.audit!==undefined).length;
+  $("#auditnote").textContent = audited
+      ? `${audited} component(s) small enough to enumerate were checked against ` +
+        `exhaustive enumeration.`
+      : "No component was small enough to check against exhaustive enumeration.";
+
+  $("#detail").innerHTML =
+      (js.cp !== null && js.cp !== undefined ? row("collision probability CP", js.cp.toExponential(12)) : "") +
+      (js.h2  !== null && js.h2  !== undefined ? row("collision entropy H2", js.h2.toFixed(4) + " bits") : "") +
+      row("<b>sound bounds</b> (always hold)", `${js.sound_lower} &le; g &le; ${js.sound_upper}`) +
+      row("affine-rank lower bound", "g &ge; " + js.sound_lower + ` (r_lin=${js.r_lin})`) +
+      row("pigeonhole lower bound", "g &ge; " + js.pigeonhole) +
+      row("exact interval from CP", js.v_lo===null ? "&mdash; (needs a class or enumeration)" : `[${js.v_lo}, ${js.v_hi}]`) +
+      row("independence estimate", js.estimate===null ? "&mdash;"
+          : `${js.estimate[0]}..${js.estimate[1]} <span style="color:#b42318;font-weight:700">NOT A BOUND</span>`) +
+      row("classification trials", js.trials);
+
+  $("#src").textContent = js.source || "(not shown)";
+}
+</script>
+</body>
+</html>
